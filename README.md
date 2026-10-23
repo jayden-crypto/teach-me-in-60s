@@ -139,59 +139,7 @@ tests/              31 pytest smoke tests
 
 ---
 
-## 5. Three-minute live demo script (4 members)
-
-**Before the slot:** the app is open full-screen at 100% zoom. Camera access is already allowed and streaming has started (● Record pressed). A saved sample set exists as backup. Decide who shows which gesture.
-
-| Time | Who | Do | Say (roughly) |
-|---|---|---|---|
-| 0:00–0:25 | **Member 1** (host) | Show the title banner. | "Can an AI learn a brand-new task from about 100 photos, in a few seconds, on a laptop with no GPU and no internet? We'll teach it Rock-Paper-Scissors live, then play against it. It's an image-classification problem with four classes, including 'Nothing', because a classifier always has to pick *something*." |
-| 0:25–1:05 | **Member 2** (data) | Members 3 and 4 hold up ✊, ✋, ✌️ while Member 2 clicks **Capture 25 frames** for each class, then captures **Nothing** (empty frame). Point at the **🎯 What the AI sees** preview and the thumbnails. | "That's 25 frames per class, about 4 seconds each. Look at this preview: a segmentation network cuts us out of the room, so the AI only sees our hands, not the background. During training, augmentation (random crops, flips, rotation and colour jitter) turns these 100 frames into over 300 training views." |
-| 1:05–1:45 | **Member 3** (training) | Press **🚀 Train** (about 3 s). Point at the curves, the confusion matrix and the model card. | "Transfer learning: MobileNetV3 was pretrained on 1.2 million ImageNet photos. We freeze its 3 million weights and train only a 3,844-parameter head. The backbone is int8-quantised: 4× smaller and 7× faster, so feature extraction takes 3 seconds instead of 20. Loss drops, validation accuracy goes up, and the confusion matrix is diagonal." |
-| 1:45–2:40 | **Member 4** (play) | Invite the professor. One round in **Fair**, then switch to **Cheater** and SHOOT again. Point at **🔍 What the AI looked at**. | "Fair mode: the AI picked its move before the countdown, and the model is only the referee. Now Cheater mode: it reads your hand in about 14 milliseconds, far faster than a human reacts, and plays the counter. And this heatmap shows *why*: we cover parts of the image and see which part, when hidden, makes the AI less sure. If it ever gets one wrong, we press 'It was ✌️': it adds that throw to the training data and retrains in 3 seconds. The AI learns from its mistakes live." |
-| 2:40–3:00 | **Member 1** | Open **📚 Under the hood**. | "Every feature maps to a syllabus module: classification, transfer learning, segmentation, augmentation, losses and metrics, quantisation, robustness. That's 8 of the 9 modules, all running offline on this CPU. Thank you!" |
-
-**If something breaks:** webcam is dead → 🛟 Fallbacks → **Load saved samples** → Train → play with "Upload a hand photo". A gesture is misread → capture 25 more frames of it and retrain (3 s), which is a nice live demonstration that more data helps. Slow browser → refresh the tab.
-
----
-
-## 6. Likely viva questions (with short answers)
-
-1. **Why MobileNetV3-Large?** It is built for mobile CPUs: depthwise-separable convolutions, squeeze-and-excitation and Hardswish give 74% ImageNet top-1 with only 5.5 M parameters and 0.22 GFLOPs. Torchvision also ships an official int8 version.
-
-2. **What is transfer learning, and why freeze the backbone?** We reuse features learned from 1.28 M ImageNet images and train only a new head. With about 100 frames, fine-tuning 3 M weights would overfit and would be slow on a CPU. The frozen trunk turns any frame into a generic 960-d description, and a linear classifier on top is enough to separate our gestures.
-
-3. **How can 25 frames per class be enough?** The pretrained features already separate shapes, textures and colours well, so our classes are nearly *linearly separable* in that 960-d space. Augmentation multiplies the data by 4, and the head has only 3,844 parameters.
-
-4. **Why the "Nothing" class?** Softmax over K classes always sums to 1, so a closed-set classifier must pick *some* gesture even for an empty frame. "Nothing" gives it an honest answer for "no hand", and the referee refuses to call it a throw.
-
-5. **Walk us through the tensor shapes.** `[N,3,224,224]` pixels → normalise → trunk `[N,960,7,7]` → global average pool `[N,960]` → standardise → dropout → Linear 960→K → `[N,K]` logits → softmax. The head has 960·K + K parameters: 3,844 for K = 4.
-
-6. **Which augmentations, and why not vertical flips?** Random resized crop (scale 0.6–1) for position and size, horizontal flip for left vs right hands, colour jitter for lighting. Optional rotation ±15° and blur. Vertical flips would create upside-down hands that never occur in play. Augmentations must reflect real variation.
-
-7. **What is feature caching, and what's the trade-off?** The frozen backbone gives the same output for the same input, so we extract features once (1 clean + 3 augmented views per image) and train on the cache, which is about 60× less backbone work. The trade-off is a fixed set of augmentations instead of fresh random ones every epoch.
-
-8. **What loss and optimiser, and why Adam?** Softmax plus **cross-entropy**, the negative log-probability of the true class. Adam (lr 0.01, weight decay 1e-4) adapts per-parameter step sizes and converges in a few dozen epochs with little tuning. SGD with momentum works too but is more sensitive to the learning rate (try it in the drawer).
-
-9. **How do you know it isn't overfitting?** We hold out 25% of each class as validation (never augmented, never trained on), then compare the train and validation curves and check the confusion matrix. Caveat: the validation set is small (about 6 frames per class), so accuracy is coarse. The real test is live play.
-
-10. **Which regularisation do you use?** A frozen backbone (few trainable parameters), data augmentation, **weight decay** (L2, 1e-4), **dropout** (0.2) before the linear layer, and early-converging training (60 short epochs).
-
-11. **What is feature standardisation, and why use training statistics only?** We subtract the training-set mean and divide by the standard deviation for each of the 960 features, so all features are on a comparable scale and the optimiser behaves better. Using validation data for these statistics would leak information from the held-out set.
-
-12. **Why does an MLP head with zero initialisation stay at chance?** Every hidden unit starts identical, gets identical gradients and stays identical, so symmetry is never broken. With ReLU the hidden outputs are 0, so the first layer's gradients are 0 too. A *single* linear layer can start at zero (no hidden units to break symmetry in), but we default to Kaiming init.
-
-13. **How does int8 quantisation work, and why is it faster?** Weights and activations are stored as 8-bit integers plus per-channel scales and zero-points: 1 byte instead of 4, so about 4× smaller (22.1 → 5.7 MB). Integer kernels (QNNPACK) are cheaper than float math. This model was trained with **quantisation-aware training**, so it loses only about 1% ImageNet accuracy (74.0 → 73.0%). On our CPU, feature extraction is about 7× faster.
-
-14. **How does the "What the AI looked at" heatmap work, and why not Grad-CAM?** It is **occlusion sensitivity**. We cover the frame with a grey 56 px square at 49 positions, re-classify each copy, and colour each region by how much the class's confidence drops. Grad-CAM needs gradients, but the int8 backbone has none, so occlusion explains the *exact* model that played. We measure confidence as **log-odds**, not probability, because a confident model sits at p = 1.0000 where softmax saturates.
-
-15. **What does Cheater mode demonstrate?** Inference speed and confidence. Classifying a frame takes about 14 ms, compared with roughly 200 ms of human reaction time, so an AI that sees your throw always wins *if the classifier is right*. Whenever it loses in Cheater mode, that is a classification error you can point at.
-
-16. **Why remove the background, and how?** In our first real test the AI kept answering "scissors" for a clear rock and a clear paper. The occlusion map was cold on the hand and hot on the room: the model had learned **which room view went with which gesture** (shortcut learning), because the camera angle changed between captures. Validation said 100% because validation frames share those backgrounds. The fix is **semantic segmentation**: LR-ASPP MobileNetV3 (3.2 M parameters, COCO-trained with the Pascal VOC classes) gives every pixel a class, and we keep only "person" pixels. In a background-swap test with our real hands pasted into each other's rooms, accuracy went from **4/9 to 9/9**.
-
----
-
-## 7. Tests
+## 5. Tests
 
 ```bash
 pytest                 # 31 smoke tests, ~15 s on CPU (needs setup_assets.py to have run)
@@ -199,7 +147,7 @@ python app.py --check  # headless: train on synthetic gestures → predict → e
 ```
 The tests cover image helpers, the normalise layer, fp32/int8 trunk shapes and similarity, the int8 size reduction, weight quantisation, occlusion maps (including log-odds not saturating), the sample store (save/load), training accuracy and parameter counts, per-class predictions, an occlusion map that is hotter on the "hand" than on the background, the zero-init lesson, RPS rules, the "Nothing" class, the scoreboard, steady-throw smoothing, background removal (masking maths, the real segmenter, raw and background-removed samples kept in sync through save/load, training reusing cut-outs instead of recomputing), and that the Gradio app builds.
 
-## 8. Troubleshooting
+## 6. Troubleshooting
 
 | Problem | Fix |
 |---|---|

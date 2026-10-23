@@ -5,3 +5,4 @@ __pycache__/
 assets/torch_cache/
 assets/leaderboard.json
 .DS_Store
+DEMO_NOTES.md

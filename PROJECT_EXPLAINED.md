@@ -443,7 +443,7 @@ The professor gave no detailed rubric beyond "10 marks, gamified or creative, or
 python setup_assets.py --verify   # offline readiness
 python app.py --check             # train → predict → explain, headless
 pytest                            # 31 tests
-python app.py                     # then follow the README §5 demo script
+python app.py                     # then play: capture, train, SHOOT
 ```
 
 ---
