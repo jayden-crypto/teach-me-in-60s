@@ -1,0 +1,9 @@
+# Teach Me in 60s, tested with Python 3.12 on macOS (Apple M2, CPU only).
+# Exact versions it was tested with are noted on the right.
+torch>=2.2          # tested 2.14.1
+torchvision>=0.17   # tested 0.29.1
+gradio>=6.0,<7      # tested 6.30.0 (Gradio 6 API: theme/css passed to launch())
+numpy>=1.26         # tested 2.5.4
+pillow>=10          # (installed with torchvision)
+matplotlib>=3.8     # tested 3.11.2
+pytest>=8           # smoke tests
