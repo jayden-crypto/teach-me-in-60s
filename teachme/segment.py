@@ -26,7 +26,8 @@ from torch import nn
 from teachme.config import IMAGENET_MEAN, IMAGENET_STD
 
 SEG_SIZE = 320        # segmentation resolution: 320 keeps fingertips that 224/256 lose
-THRESHOLD = 0.5       # p(person) above this = keep the pixel
+THRESHOLD = 0.3       # p(person) above this = keep the pixel (low enough to keep thin fingers)
+GROW_PX = 9           # expand the mask a little so fingertips are never clipped
 FILL = 0.5            # background colour (mid grey, in [0, 1] pixel units)
 
 
@@ -46,7 +47,8 @@ class PersonSegmenter:
         logits = self.model((small - self.mean) / self.std)["out"]          # [N, 21, S, S]
         p_person = logits.softmax(1)[:, self.person_index:self.person_index + 1]
         p_person = F.interpolate(p_person, size=x.shape[-2:], mode="bilinear", align_corners=False)
-        return (p_person > THRESHOLD).float()
+        mask = (p_person > THRESHOLD).float()
+        return F.max_pool2d(mask, GROW_PX, stride=1, padding=GROW_PX // 2)  # dilate: grow the mask outwards
 
     def remove_background(self, x: torch.Tensor) -> torch.Tensor:
         """Keep person pixels, paint the rest grey. Shapes: [N, 3, H, W] -> same."""
